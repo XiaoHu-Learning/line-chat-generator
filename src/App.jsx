@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Search, Phone, Menu, Plus, Camera, Image as ImageIcon, Mic, Smile, Send, Trash2,
-  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone
+  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, CheckCircle2
 } from 'lucide-react';
+
+import { toCanvas } from 'html-to-image';
+import JSZip from 'jszip';
 
 // --- Components defined OUTSIDE the main component ---
 
@@ -63,7 +66,7 @@ const LineChatGenerator = () => {
   const phoneRef = useRef(null);
   const chatAreaRef = useRef(null);
   const chatContentRef = useRef(null);
-  const bottomRef = useRef(null); // ✅ NEW: 用於確保預覽真的停在最新訊息
+  const bottomRef = useRef(null);
 
   const isInitialMount = useRef(true);
   const prevMessagesLen = useRef(0);
@@ -88,27 +91,6 @@ const LineChatGenerator = () => {
   const [screenshots, setScreenshots] = useState([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
-
-  // --- Effects ---
-  useEffect(() => {
-    if (!document.querySelector('script[src*="html-to-image"]')) {
-      const script = document.createElement('script');
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
-    if (!document.querySelector('script[src*="jszip"]')) {
-      const script = document.createElement('script');
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
-
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -135,7 +117,7 @@ const LineChatGenerator = () => {
     }
   };
 
-  // ✅ 等待聊天內容中的圖片載入完成（避免截到圖片還沒撐開高度）
+  // 等待聊天內容中的圖片載入完成
   const waitForChatImages = async () => {
     const wrapper = chatContentRef.current;
     if (!wrapper) return;
@@ -154,13 +136,13 @@ const LineChatGenerator = () => {
     await Promise.all(tasks);
   };
 
-  // ✅ 等字型 + 等 repaint
+  // 等字型 + 等 repaint
   const waitForStableFrame = async () => {
     if (document.fonts?.ready) await document.fonts.ready;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   };
 
-  // ✅ NEW：等待滾動真正到位（避免 scrollIntoView/scrollTop 還在 race）
+  // 等待滾動真正到位
   const waitForScrollSettled = async (el, targetScrollTop, { maxFrames = 30, tolerance = 1 } = {}) => {
     if (!el) return;
 
@@ -168,7 +150,6 @@ const LineChatGenerator = () => {
     let stableCount = 0;
 
     for (let i = 0; i < maxFrames; i++) {
-      // 兩個 rAF：確保 layout/scroll 更新寫入
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
       const cur = el.scrollTop;
@@ -176,7 +157,6 @@ const LineChatGenerator = () => {
 
       if (reached) return;
 
-      // scrollTop 連續不變 2 幀就視為「已穩定」（即使沒到 target，也至少確保截到當下畫面）
       if (Math.abs(cur - last) <= tolerance) stableCount += 1;
       else stableCount = 0;
 
@@ -186,23 +166,33 @@ const LineChatGenerator = () => {
     }
   };
 
-  // ✅ NEW：永遠用「預覽當下的 scrollTop」重建 clone 視窗（WYSIWYG）
+  // 永遠用「預覽當下的 scrollTop」重建 clone 視窗（WYSIWYG）
   const captureScreen = async () => {
     if (!phoneRef.current || isCapturing) return;
     setIsCapturing(true);
 
-    // ✅ 暴力穩定版（WYSIWYG）：把「預覽當下的 scrollTop」直接 bake 進真實 DOM（不用靠 clone 量測/滾動）
-    // 作法：
-    // 1) 先讓右側預覽捲到底（如果你要永遠截最新）
-    // 2) 讀取 runtime scrollTop
-    // 3) 暫時把 chat 內容 translateY(-scrollTop) + 把視窗 overflow 設成 hidden
-    // 4) 用 html-to-image 的 toCanvas 直接抓當下畫面
-    // 5) 立刻還原 DOM
-
     const runtimeChatArea = chatAreaRef.current;
     const runtimeChatContent = chatContentRef.current;
 
-    // 備份 inline style，截完要還原（避免 UI 被永久改掉）
+    // 取得當前元件的寬高，確保截圖尺寸一致
+    const node = phoneRef.current;
+    const nodeWidth = node.offsetWidth;
+    const nodeHeight = node.offsetHeight;
+
+    // 測量所有氣泡在「真實預覽畫面」中的尺寸
+    const bubbleMeasurements = [];
+    if (runtimeChatContent) {
+        const bubbles = runtimeChatContent.querySelectorAll('.message-bubble');
+        bubbles.forEach(b => {
+            const rect = b.getBoundingClientRect();
+            bubbleMeasurements.push({
+                width: rect.width,
+                height: rect.height
+            });
+        });
+    }
+
+    // 備份 inline style
     const prev = runtimeChatArea && runtimeChatContent ? {
       areaOverflow: runtimeChatArea.style.overflow,
       areaHeight: runtimeChatArea.style.height,
@@ -212,48 +202,87 @@ const LineChatGenerator = () => {
     } : null;
 
     try {
-      if (!window.htmlToImage) {
-        console.error('html-to-image not loaded.');
+      if (!toCanvas) {
+        console.error("html-to-image library not loaded yet.");
+        // 在本地開發環境使用 import 時，這行請刪除
+        setIsCapturing(false);
         return;
       }
 
-      // 1) 等聊天圖片載入完成（避免高度還沒撐開）
+      // 1) 等聊天圖片載入完成
       await waitForChatImages();
 
       if (!runtimeChatArea || !runtimeChatContent) return;
 
-      // 2) ✅ 你要「永遠截最新」就保留；想「截使用者目前捲到哪」就把這段註解掉
+      // 2) 捲到底 (自動截圖時適用)
       bottomRef.current?.scrollIntoView({ block: 'end' });
 
-      // 3) ✅ 等滾動真的到位（避免 race）
+      // 3) 等滾動真的到位
       const targetScrollTop = Math.max(0, runtimeChatArea.scrollHeight - runtimeChatArea.clientHeight);
       await waitForScrollSettled(runtimeChatArea, targetScrollTop);
 
-      // 4) ✅ 讀取「預覽當下」的 scrollTop / viewportHeight（WYSIWYG 的唯一真相）
+      // 4) 讀取「預覽當下」的 scrollTop
       const runtimeScrollTop = runtimeChatArea.scrollTop;
       const runtimeViewportHeight = runtimeChatArea.clientHeight;
 
-      // 5) ✅ 暴力：把 scroll 狀態 bake 進真實 DOM（clone 就只能照抄，不用自己猜）
+      // 5) 暴力：把 scroll 狀態 bake 進真實 DOM
       runtimeChatArea.style.overflow = 'hidden';
       runtimeChatArea.style.height = `${runtimeViewportHeight}px`;
-      runtimeChatArea.scrollTop = 0; // 避免 scrollTop + transform 疊加
+      runtimeChatArea.scrollTop = 0;
 
       runtimeChatContent.style.transform = `translate3d(0, -${runtimeScrollTop}px, 0)`;
       runtimeChatContent.style.willChange = 'transform';
 
-      // 6) 等字型 + 等 repaint（確保畫面就是你看到的那一幀）
+      // 6) 等字型 + 等 repaint
       await waitForStableFrame();
 
-      // 7) 用 toCanvas 拿到 canvas（更穩、後續可裁切/壓縮）
-      const canvas = await window.htmlToImage.toCanvas(phoneRef.current, {
+      // 7) 執行截圖
+      const canvas = await toCanvas(phoneRef.current, {
+        width: nodeWidth,
+        height: nodeHeight,
         pixelRatio: 2,
         cacheBust: true,
         skipAutoScale: true,
         style: { margin: 0 },
         backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement("style");
+          // 補上 padding-left/right 確保氣泡寬度計算正確，防止文字異常換行
+          style.innerHTML = `
+            [data-screenshot-target="true"] * {
+              -webkit-font-smoothing: antialiased;
+              text-rendering: geometricPrecision;
+              box-sizing: border-box;
+            }
+            [data-screenshot-target="true"] .message-bubble {
+               line-height: 1.5 !important; 
+               padding-top: 8px !important;
+               padding-bottom: 8px !important;
+               padding-left: 12px !important; /* Tailwind px-3 */
+               padding-right: 12px !important; /* Tailwind px-3 */
+            }
+            [data-screenshot-target="true"] .badge-99 {
+               padding-top: 2px !important;
+            }
+            [data-screenshot-target="true"] .date-tag {
+               padding-top: 3px !important;
+            }
+          `;
+          clonedDoc.head.appendChild(style);
+
+          // 將測量到的寬高強制應用到 Clone 的氣泡上
+          const clonedBubbles = clonedDoc.querySelectorAll('.message-bubble');
+          clonedBubbles.forEach((b, i) => {
+              const m = bubbleMeasurements[i];
+              if (m) {
+                  // width + 1px 是緩衝區，height 鎖定避免多出一行空白
+                  b.style.cssText += `width: ${m.width + 1}px !important; height: ${m.height}px !important; min-width: ${m.width}px !important; max-width: none !important; flex: none !important;`;
+              }
+          });
+        }  
       });
 
-      // 8) ✅ clip（保險）：把 canvas 再 draw 到新 canvas（避免某些瀏覽器多 1px 邊界）
+      // 8) clip
       const clipped = document.createElement('canvas');
       clipped.width = canvas.width;
       clipped.height = canvas.height;
@@ -265,7 +294,7 @@ const LineChatGenerator = () => {
     } catch (error) {
       console.error('Screenshot failed:', error);
     } finally {
-      // ✅ 一定要還原 DOM，避免預覽畫面被我們的 transform 影響
+      // 還原 DOM
       try {
         if (prev && runtimeChatArea && runtimeChatContent) {
           runtimeChatArea.style.overflow = prev.areaOverflow;
@@ -281,7 +310,7 @@ const LineChatGenerator = () => {
     }
   };
 
-  // ✅ 自動截圖：改成「等預覽真的到位」再截（避免 race condition）
+  // 自動截圖
   useEffect(() => {
     const isAdding = messages.length > prevMessagesLen.current;
 
@@ -298,16 +327,11 @@ const LineChatGenerator = () => {
 
     const run = async () => {
       try {
-        // 1) 等圖片載入（高度穩定）
         await waitForChatImages();
-
-        // 2) 捲到底（讓預覽先是正確的）
         bottomRef.current?.scrollIntoView({ block: 'end' });
-
-        // 3) 等兩個 rAF（確保 scrollTop 已經反映在畫面上）
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        // 4) 需要自動截圖才截
+        // 在本地開發環境使用 import 時，不需要檢查 window.htmlToImage
         if (autoScreenshot && !isCapturing) {
           await captureScreen();
         }
@@ -374,8 +398,13 @@ const LineChatGenerator = () => {
   };
 
   const downloadAllScreenshots = async () => {
-    if (!window.JSZip || screenshots.length === 0) return;
-    const zip = new window.JSZip();
+    if (screenshots.length === 0) return;
+    
+    // 在本地開發環境使用 import 時，這行檢查請刪除
+    if (!JSZip) return;
+
+    // 在本地開發環境使用 import 時，請改用 new JSZip()
+    const zip = new JSZip();
     screenshots.forEach((shot, index) => {
       const base64Data = shot.src.split(',')[1];
       zip.file(`screenshot-${index + 1}.png`, base64Data, { base64: true });
@@ -581,10 +610,8 @@ const LineChatGenerator = () => {
                 </div>
               </section>
             )}
-
             <div className="mt-auto pt-4 text-xs text-gray-400 text-center">點擊畫面中的對話框可刪除該訊息</div>
           </div>
-
           <button onClick={captureScreen} disabled={isCapturing} className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shrink-0">
             {isCapturing ? <><Loader2 className="animate-spin" size={20} /> 截圖處理中...</> : <><Camera size={20} /> 手動截圖</>}
           </button>
@@ -595,56 +622,28 @@ const LineChatGenerator = () => {
           <div className="w-[375px] rounded-[40px] shadow-2xl overflow-hidden border-[10px] border-gray-800 relative shrink-0 bg-gray-800 transition-all duration-300 ease-in-out" style={{ height: `${getPhoneHeight()}px` }}>
             <div ref={phoneRef} data-screenshot-target="true" className="w-full h-full bg-white relative flex flex-col">
               <div className="absolute inset-0 z-0 bg-[#F2EEE2]"></div>
-
               <div className="relative z-10 bg-[#F2EEE2]/90 backdrop-blur-sm pt-2 pb-1">
                 <PhoneStatusBar currentTime={currentTime} />
               </div>
-
               <div className="relative z-10 bg-[#F2EEE2]/95 px-4 pb-3 flex items-center justify-between shadow-sm/5 border-b border-black/5">
-                <div className="flex items-center gap-1 text-[#463C36] cursor-pointer flex-shrink-0">
-                  <ArrowLeft size={24} />
-                  <div className="badge-99 bg-[#D9D3C7] px-2 py-0.5 h-5 rounded-full text-[10px] font-medium text-[#6B5A4E] whitespace-nowrap font-sans flex-shrink-0 flex items-center justify-center">99+</div>
-                </div>
+                <div className="flex items-center gap-1 text-[#463C36] cursor-pointer flex-shrink-0"><ArrowLeft size={24} /><div className="badge-99 bg-[#D9D3C7] px-2 py-0.5 h-5 rounded-full text-[10px] font-medium text-[#6B5A4E] whitespace-nowrap font-sans flex-shrink-0 flex items-center justify-center">99+</div></div>
                 <div className="font-bold text-[#463C36] text-lg truncate max-w-[180px] text-center font-sans flex-shrink-0">{chatName}</div>
                 <div className="flex items-center gap-4 text-[#463C36] flex-shrink-0"><Search size={22} strokeWidth={2} /><Phone size={22} strokeWidth={2} /><Menu size={22} strokeWidth={2} /></div>
               </div>
-
+              
               {/* Chat Scroll Area */}
               <div ref={chatAreaRef} id="chat-scroll-area" className="flex-1 relative z-10 overflow-y-auto p-4 scrollbar-hide min-h-0">
                 <div ref={chatContentRef} id="chat-content-wrapper" className="flex flex-col space-y-4 min-h-full pb-4">
-                  <div className="flex justify-center mb-2">
-                    <div className="date-tag bg-[#DCD6CA] text-white text-[10px] px-3 py-1 h-6 rounded-full opacity-80 whitespace-nowrap font-sans flex items-center justify-center">{getFormattedDate(chatDate)}</div>
-                  </div>
-
+                  <div className="flex justify-center mb-2"><div className="date-tag bg-[#DCD6CA] text-white text-[10px] px-3 py-1 h-6 rounded-full opacity-80 whitespace-nowrap font-sans flex items-center justify-center">{getFormattedDate(chatDate)}</div></div>
                   {messages.map((msg) => (
                     <div key={msg.id} onClick={() => deleteMessage(msg.id)} className={`flex w-full ${msg.sender === 2 ? 'justify-end' : 'justify-start'} group cursor-pointer`}>
                       <div className="hidden group-hover:flex absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/50 text-white text-xs px-2 py-1 rounded z-50 pointer-events-none">點擊刪除</div>
-
-                      {msg.sender === 1 && (
-                        <div className="mr-2 mt-1 flex-shrink-0">
-                          <div className="w-9 h-9 rounded-full bg-gray-300 overflow-hidden border border-black/5">
-                            {user1Avatar ? <img src={user1Avatar} alt="avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[#3B5998] flex items-center justify-center text-white text-xs">A</div>}
-                          </div>
-                        </div>
-                      )}
-
+                      {msg.sender === 1 && (<div className="mr-2 mt-1 flex-shrink-0"><div className="w-9 h-9 rounded-full bg-gray-300 overflow-hidden border border-black/5">{user1Avatar ? <img src={user1Avatar} alt="avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[#3B5998] flex items-center justify-center text-white text-xs">A</div>}</div></div>)}
                       <div className={`flex flex-col ${msg.type === 'image' ? 'max-w-[50%]' : 'max-w-[70%]'} ${msg.sender === 2 ? 'items-end' : 'items-start'}`}>
                         <div className={`flex items-end gap-1.5 ${msg.sender === 2 ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <div
-                            className={`message-bubble relative text-[15px] break-words font-sans ${msg.type === 'image'
-                              ? 'p-0 bg-transparent shadow-none'
-                              : `px-3 py-2 shadow-sm border ${msg.sender === 1
-                                ? 'bg-white rounded-[18px] rounded-tl-sm border-[#E6E6E6]'
-                                : 'bg-[#F0E6D2] rounded-[18px] rounded-tr-sm border-[#E8D4BB]'
-                              }`}
-                            text-[#2b2b2b]`}
-                            style={{ lineHeight: '1.5' }}
-                          >
-                            {msg.type === 'image'
-                              ? <img src={msg.content} alt="sent image" className="rounded-xl max-w-full" />
-                              : msg.content}
+                          <div className={`message-bubble relative text-[15px] break-words font-sans ${msg.type === 'image' ? 'p-0 bg-transparent shadow-none' : `px-3 py-2 shadow-sm border ${msg.sender === 1 ? 'bg-white rounded-[18px] rounded-tl-sm border-[#E6E6E6]' : 'bg-[#F0E6D2] rounded-[18px] rounded-tr-sm border-[#E8D4BB]'}`} text-[#2b2b2b]`} style={{ lineHeight: '1.5' }}>
+                            {msg.type === 'image' ? <img src={msg.content} alt="sent image" className="rounded-xl max-w-full" /> : msg.content}
                           </div>
-
                           <div className={`flex flex-col text-[10px] text-[#8C8C8C] mb-1 whitespace-nowrap font-sans ${msg.sender === 2 ? 'items-end' : 'items-start'}`}>
                             {msg.sender === 2 && msg.read && <span className="mb-0.5 whitespace-nowrap">已讀</span>}
                             <span className="whitespace-nowrap">{msg.time}</span>
@@ -654,7 +653,7 @@ const LineChatGenerator = () => {
                     </div>
                   ))}
 
-                  {/* ✅ NEW: bottom anchor，確保 scrollIntoView 穩定 */}
+                  {/* bottom anchor，確保 scrollIntoView 穩定 */}
                   <div ref={bottomRef} />
                 </div>
               </div>
@@ -666,8 +665,6 @@ const LineChatGenerator = () => {
                 <Smile size={24} className="text-[#4F463D]" />
                 <Mic size={22} className="text-[#4F463D]" />
               </div>
-
-              <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-black/20 rounded-full z-20"></div>
             </div>
           </div>
         </div>
