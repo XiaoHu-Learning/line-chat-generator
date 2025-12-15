@@ -8,6 +8,9 @@ import {
 import { toCanvas } from 'html-to-image';
 import JSZip from 'jszip';
 
+//引入消毒工具
+import DOMPurify from 'dompurify';
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
@@ -66,7 +69,15 @@ const PhoneStatusBar = ({ currentTime }) => (
 );
 
 const LineChatGenerator = () => {
-  // --- State & Refs ---
+
+  const sanitizeInput = (text) => {
+    if (typeof text !== 'string') return text;
+    
+    if (DOMPurify) {
+        return DOMPurify.sanitize(text);
+    }
+    return text; 
+  };
 
   const getCurrentTime = () => {
     const now = new Date();
@@ -553,7 +564,7 @@ const LineChatGenerator = () => {
               <h2 className="font-semibold text-gray-600 flex items-center gap-2"><User size={18} /> 基本設定</h2>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">聊天室名稱</label>
-                <input type="text" value={chatName} onChange={(e) => setChatName(e.target.value)} className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <input type="text" value={chatName} onChange={(e) => setChatName(sanitizeInput(e.target.value))} className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">聊天室日期</label>
@@ -660,7 +671,7 @@ const LineChatGenerator = () => {
                   )}
                 </div>
               </div>
-              <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="輸入對話內容..." className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+              <textarea value={inputText} onChange={(e) => setInputText(sanitizeInput(e.target.value))} placeholder="輸入對話內容..." className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
 
               {pendingImage && (
                 <div className="border border-green-200 bg-green-50 rounded-lg p-2 animate-in fade-in zoom-in-95 duration-200">
