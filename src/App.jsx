@@ -4,9 +4,40 @@ import {
   Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, TrendingUp, ShieldAlert
 } from 'lucide-react';
 
-
+// 引入 截圖與檔案打包功能
 import { toCanvas } from 'html-to-image';
 import JSZip from 'jszip';
+
+// Import the functions you need from the SDKs you need
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, signInAnonymously } from "firebase/auth";
+import { getFirestore, doc, setDoc, onSnapshot, increment } from "firebase/firestore";
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+};
+
+// Initialize Firebase
+let db;
+let auth;
+
+if (firebaseConfig.apiKey !== "請填入您的_apiKey") {
+  try {
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (error) {
+    console.error("Firebase initialization failed:", error);
+  }
+}
 
 // --- Components defined OUTSIDE the main component ---
 
@@ -79,7 +110,7 @@ const LineChatGenerator = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   
-  const [viewCount, setViewCount] = useState(12345);
+  const [viewCount, setViewCount] = useState(0);
 
   const [user1Avatar, setUser1Avatar] = useState(null);
 
@@ -127,6 +158,27 @@ const LineChatGenerator = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [autoSyncSystemTime, autoSyncTime, currentTime]);
+
+  // 網站流量統計
+  useEffect(() => {
+    if (!db || !auth) return;
+    const initStats = async () => {
+      try {
+        await signInAnonymously(auth);
+        const statsRef = doc(db, 'stats', 'global');
+        const unsubscribe = onSnapshot(statsRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setViewCount(docSnap.data().page_views || 0);
+          }
+        });
+        await setDoc(statsRef, { page_views: increment(1) }, { merge: true });
+        return () => unsubscribe();
+      } catch (err) {
+        console.error("Stats error:", err);
+      }
+    };
+    initStats();
+  }, []);
 
   const [messages, setMessages] = useState([]);
 
@@ -463,7 +515,6 @@ const LineChatGenerator = () => {
               </div>
 
               {/* 右側：統計與按鈕 */}
-              {/* ✅ 修正：動態調整 gap，確保縮小時緊湊 */}
               <div className={`flex flex-col items-end flex-shrink-0 transition-all duration-300 ${isScrolled ? 'gap-0 pt-0' : 'gap-3 pt-1'}`}>
                  {/* 流量統計 */}
                  <div className={`flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100 transition-all duration-300 ${isScrolled ? 'opacity-0 h-0 p-0 overflow-hidden' : 'opacity-100'}`}>
@@ -725,7 +776,6 @@ const LineChatGenerator = () => {
                     </div>
                   ))}
 
-                  {/* ✅ NEW: bottom anchor，確保 scrollIntoView 穩定 */}
                   <div ref={bottomRef} />
                 </div>
               </div>
