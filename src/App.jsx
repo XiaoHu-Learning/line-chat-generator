@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Search, Phone, Menu, Plus, Camera, Image as ImageIcon, Mic, Smile, Send, Trash2,
-  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, TrendingUp, ShieldAlert
+  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, CheckCircle2, TrendingUp, ShieldAlert,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 
 // 引入 截圖與檔案打包功能
@@ -120,6 +121,8 @@ const LineChatGenerator = () => {
   const [aspectRatio, setAspectRatio] = useState("19:9");
   const [isMobile, setIsMobile] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false); // 手機版 Header 收合狀態
+
   
   const [viewCount, setViewCount] = useState(0);
 
@@ -146,6 +149,7 @@ const LineChatGenerator = () => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
           const currentScrollY = window.scrollY;
+          // 緩衝區間避免抖動
           if (currentScrollY > 100) setIsScrolled(true);
           else if (currentScrollY < 10) setIsScrolled(false);
           ticking = false;
@@ -155,6 +159,31 @@ const LineChatGenerator = () => {
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // 2. 偵測 Mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      
+      // 如果切換到電腦版 (寬度 >= 768)，強制展開 Header
+      if (!mobile) {
+        setIsHeaderCollapsed(false);
+      } else {
+        // 如果是初始載入且是手機版，預設收合 (可選)
+        // 這裡我們不強制設定 true，讓使用者可以手動展開，但在 resize 事件中不建議一直強制設為 true
+      }
+    };
+    
+    // 初始執行一次
+    if (window.innerWidth < 768) {
+       setIsMobile(true);
+       setIsHeaderCollapsed(true); // 只有初始載入如果是手機版才自動收合
+    }
+
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   useEffect(() => {
@@ -496,39 +525,50 @@ const LineChatGenerator = () => {
       {/* Sticky Header */}
       <div 
         className={`sticky top-0 z-50 w-full transition-all duration-300 border-b border-gray-200/50 
-        ${isScrolled ? 'bg-white/90 backdrop-blur-md py-2 shadow-sm' : 'bg-transparent py-4 mb-4'}`}
+        ${(isScrolled || isHeaderCollapsed) ? 'bg-white/90 backdrop-blur-md py-2 shadow-sm' : 'bg-transparent py-4 mb-4'}`}
       >
         <div className={`w-full max-w-7xl mx-auto transition-all duration-300 px-4`}>
           <div className={`
-             transition-all duration-300 rounded-xl
-             ${isScrolled ? 'bg-transparent' : 'bg-white p-6 shadow-lg border border-gray-200'}
+             transition-all duration-300 rounded-xl relative
+             ${(isScrolled || isHeaderCollapsed) ? 'bg-transparent' : 'bg-white p-6 shadow-lg border border-gray-200'}
           `}>
-            <div className={`flex flex-col md:flex-row justify-between transition-all duration-300 items-center gap-4 md:gap-6`}>
+             
+            {/* Collapse Toggle Button (Mobile Only) */}
+            <button 
+              onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)}
+              className="md:hidden absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 z-10"
+            >
+              {isHeaderCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+            </button>
+
+            {/* 確保任何收合條件下 (HeaderCollapsed OR Scrolled) 都使用 flex-row 並水平置中 */}
+            <div className={`flex ${(isHeaderCollapsed || isScrolled) ? 'flex-row items-center gap-2' : 'flex-col md:flex-row gap-4 md:gap-6'} justify-between transition-all duration-300 items-center`}>
               
-              <div className={`flex-1 flex flex-col transition-all duration-300 ${isScrolled ? 'gap-0' : 'gap-4'}`}>
-                <h1 className={`font-bold text-gray-800 flex items-center gap-3 transition-all duration-300 ${isScrolled ? 'text-xl' : 'text-3xl'}`}>
-                  <span className={`bg-green-500 text-white rounded-lg transition-all duration-300 ${isScrolled ? 'p-1.5' : 'p-2'}`}>
-                    <Smartphone size={isScrolled ? 20 : 28} />
+              {/* 標題與描述 */}
+              <div className={`flex-1 flex flex-col transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'gap-0 items-start' : 'gap-4 items-center md:items-start'}`}>
+                <h1 className={`font-bold text-gray-800 flex items-center gap-3 transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'text-xl' : 'text-3xl'}`}>
+                  <span className={`bg-green-500 text-white rounded-lg transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'p-1.5' : 'p-2'}`}>
+                    <Smartphone size={(isScrolled || isHeaderCollapsed) ? 20 : 28} />
                   </span>
-                  Line 對話產生器
+                  <span >Line 對話產生器</span>
                 </h1>
                 
                 {/* Description Area */}
-                <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isScrolled ? 'max-h-0 opacity-0 mt-0' : 'max-h-40 opacity-100 mt-0'}`}>
-                  <div className="text-gray-600 text-sm leading-relaxed">
+                <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out ${(isScrolled || isHeaderCollapsed) ? 'max-h-0 opacity-0 mt-0' : 'max-h-96 opacity-100 mt-2'}`}>
+                  <div className="text-gray-600 text-sm leading-relaxed text-center md:text-left">
                     <p>
                       <strong>Line 對話產生器</strong>是一款免費的線上工具，讓你快速建立擬真的 LINE 聊天畫面。
                       你可以自訂聊天室名稱、日期、時間、對話內容、圖片與已讀狀態，並即時預覽、一鍵截圖下載。
-                      適合用於梗圖製作以及Line貼圖情境展示，無需安裝、開啟即用。直接點擊預覽畫面中的訊息氣泡，即可刪除該則訊息⚠️本工具僅供娛樂與創作使用，請勿用於詐騙或偽造文書⚠️
+                      適合用於梗圖製作以及Line貼圖情境展示，無需安裝、開啟即用。
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* 右側：統計與按鈕 */}
-              <div className={`flex flex-col items-end flex-shrink-0 transition-all duration-300 ${isScrolled ? 'gap-0 pt-0' : 'gap-3 pt-1'}`}>
+              {/* 統計與按鈕 */}
+              <div className={`flex flex-col flex-shrink-0 transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'gap-0 pt-0 items-end' : 'gap-3 pt-1 items-center md:items-end'} ${isMobile && (isHeaderCollapsed || isScrolled) ? 'pr-8' : ''}`}>
                  {/* 流量統計 */}
-                 <div className={`flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100 transition-all duration-300 ${isScrolled ? 'opacity-0 h-0 p-0 overflow-hidden' : 'opacity-100'}`}>
+                 <div className={`flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100 transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'opacity-0 h-0 p-0 overflow-hidden' : 'opacity-100'}`}>
                     <TrendingUp size={16} className="text-green-600" />
                     <span className="font-medium">總網頁流量:</span>
                     <span className="font-bold text-gray-700 font-mono">
@@ -541,10 +581,17 @@ const LineChatGenerator = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`flex items-center gap-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white rounded-full font-bold shadow-md transition-all hover:scale-105 hover:shadow-lg whitespace-nowrap
-                    ${isScrolled ? 'px-4 py-2 text-sm' : 'px-6 py-3 text-base'}
+                    ${(isScrolled || isHeaderCollapsed) 
+                      ? 'p-2 w-10 h-10 justify-center md:w-auto md:h-auto md:px-4 md:py-2' 
+                      : 'px-6 py-3 text-base'
+                    }
                   `}
+                  title="贊助小胡一杯咖啡"
                 >
-                  <Coffee size={isScrolled ? 16 : 20} strokeWidth={2.5} /> 贊助小胡一杯咖啡
+                  <Coffee size={(isScrolled || isHeaderCollapsed) ? 20 : 20} strokeWidth={2.5} /> 
+                  
+                  {/* ✅ 收合時，手機版隱藏文字，但電腦版(md:)強制顯示文字 */}
+                  <span className={`${(isScrolled || isHeaderCollapsed) ? 'hidden md:block' : 'block'}`}>贊助小胡一杯咖啡</span>
                 </a>
               </div>
             </div>
@@ -564,7 +611,13 @@ const LineChatGenerator = () => {
               <h2 className="font-semibold text-gray-600 flex items-center gap-2"><User size={18} /> 基本設定</h2>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">聊天室名稱</label>
-                <input type="text" value={chatName} onChange={(e) => setChatName(sanitizeInput(e.target.value))} className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                {/* 使用 sanitizeInput */}
+                <input 
+                    type="text" 
+                    value={chatName} 
+                    onChange={(e) => setChatName(sanitizeInput(e.target.value))} 
+                    className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" 
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">聊天室日期</label>
@@ -578,6 +631,7 @@ const LineChatGenerator = () => {
                   <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                 </div>
               </div>
+              {/* ... (rest of settings, same as before) */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs text-gray-500">現在時間 (手機上方)</label>
@@ -632,6 +686,7 @@ const LineChatGenerator = () => {
               </div>
             </section>
             
+            {/* User, Message sections ... (kept same) */}
             <section className="space-y-3 border-t pt-4">
               <h2 className="font-semibold text-gray-600">角色 1 (對方) 設定</h2>
               <div className="flex items-center gap-4">
@@ -671,7 +726,13 @@ const LineChatGenerator = () => {
                   )}
                 </div>
               </div>
-              <textarea value={inputText} onChange={(e) => setInputText(sanitizeInput(e.target.value))} placeholder="輸入對話內容..." className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+              {/* 使用 sanitizeInput */}
+              <textarea 
+                value={inputText} 
+                onChange={(e) => setInputText(sanitizeInput(e.target.value))} 
+                placeholder="輸入對話內容..." 
+                className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+              ></textarea>
 
               {pendingImage && (
                 <div className="border border-green-200 bg-green-50 rounded-lg p-2 animate-in fade-in zoom-in-95 duration-200">
@@ -702,7 +763,7 @@ const LineChatGenerator = () => {
                     <button onClick={() => setScreenshots([])} className="text-xs text-red-500 hover:underline">清空全部</button>
                   </div>
                 </h2>
-                <div className="grid grid-cols-4 gap-2 overflow-y-auto content-start">
+                <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto content-start">
                   {screenshots.map((shot, index) => (
                     <div key={shot.id} className="relative group border rounded-md overflow-hidden bg-gray-50 cursor-pointer shadow-sm hover:shadow-md transition-all" onClick={() => setPreviewImage(shot.src)}>
                       <img src={shot.src} alt={`screenshot-${index + 1}`} className="w-full h-auto object-contain" />
