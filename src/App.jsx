@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Search, Phone, Menu, Plus, Camera, Image as ImageIcon, Mic, Smile, Send, Trash2,
-  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, CheckCircle2, TrendingUp, ShieldAlert,
+  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, TrendingUp, ShieldAlert,
   ChevronUp, ChevronDown
 } from 'lucide-react';
 
@@ -538,7 +538,7 @@ const LineChatGenerator = () => {
               onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)}
               className="md:hidden absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 z-10"
             >
-              {isHeaderCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+              {isHeaderCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
             </button>
 
             {/* 確保任何收合條件下 (HeaderCollapsed OR Scrolled) 都使用 flex-row 並水平置中 */}
@@ -548,7 +548,7 @@ const LineChatGenerator = () => {
               <div className={`flex-1 flex flex-col transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'gap-0 items-start' : 'gap-4 items-center md:items-start'}`}>
                 <h1 className={`font-bold text-gray-800 flex items-center gap-3 transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'text-xl' : 'text-3xl'}`}>
                   <span className={`bg-green-500 text-white rounded-lg transition-all duration-300 ${(isScrolled || isHeaderCollapsed) ? 'p-1.5' : 'p-2'}`}>
-                    <Smartphone size={(isScrolled || isHeaderCollapsed) ? 20 : 28} />
+                    <Smartphone size={(isScrolled || isHeaderCollapsed) ? 18 : 28} />
                   </span>
                   <span >Line 對話產生器</span>
                 </h1>
