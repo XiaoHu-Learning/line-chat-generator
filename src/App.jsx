@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Search, Phone, Menu, Plus, Camera, Image as ImageIcon, Mic, Smile, Send, Trash2,
-  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, TrendingUp, ShieldAlert,
+  Download, User, Package, Coffee, Calendar, Loader2, X, Smartphone, TrendingUp, ShieldAlert, Globe,
   ChevronUp, ChevronDown
 } from 'lucide-react';
 
@@ -139,13 +139,70 @@ const LineChatGenerator = () => {
   const [screenshots, setScreenshots] = useState([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+  const [showTourPrompt, setShowTourPrompt] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [tourTargetRect, setTourTargetRect] = useState(null);
+  const [tourTooltipPos, setTourTooltipPos] = useState({ top: 0, left: 0, placement: 'right' });
+
+  const tourSteps = [
+    {
+      targetId: 'tour-basic',
+      title: '基本設定',
+      desc: '設定聊天室名稱、日期與手機顯示時間。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-auto-shot',
+      title: '自動截圖',
+      desc: '開啟後每次送出訊息都會自動截圖。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-role',
+      title: '角色設定',
+      desc: '上傳對方頭貼，讓對話看起來更真實。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-message',
+      title: '新增訊息',
+      desc: '切換角色、輸入文字或圖片訊息，建立對話內容。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-album',
+      title: '暫存截圖',
+      desc: '自動或手動截圖會出現在這裡，可下載或打包。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-manual-shot',
+      title: '手動截圖',
+      desc: '需要時可按這個按鈕進行截圖。',
+      placement: 'right',
+    },
+    {
+      targetId: 'tour-preview',
+      title: '手機預覽',
+      desc: '右側會即時顯示對話樣式與已讀狀態。',
+      placement: 'left',
+    },
+  ];
+
+  const currentTourStep = showTour ? tourSteps[tourStepIndex] : null;
 
   // --- Effects ---
 
   // 1. 偵測捲動 (Header 變形)
   useEffect(() => {
+    if (showTour) {
+      setIsScrolled(false);
+      return undefined;
+    }
     let ticking = false;
     const handleScroll = () => {
+      if (showTour) return;
       if (!ticking) {
         window.requestAnimationFrame(() => {
           const currentScrollY = window.scrollY;
@@ -159,7 +216,7 @@ const LineChatGenerator = () => {
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [showTour]);
 
   // 2. 偵測 Mobile
   useEffect(() => {
@@ -167,12 +224,9 @@ const LineChatGenerator = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       
-      // 如果切換到電腦版 (寬度 >= 768)，強制展開 Header
       if (!mobile) {
         setIsHeaderCollapsed(false);
       } else {
-        // 如果是初始載入且是手機版，預設收合 (可選)
-        // 這裡我們不強制設定 true，讓使用者可以手動展開，但在 resize 事件中不建議一直強制設為 true
       }
     };
     
@@ -198,6 +252,62 @@ const LineChatGenerator = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [autoSyncSystemTime, autoSyncTime, currentTime]);
+
+  useEffect(() => {
+    const seen = localStorage.getItem('linechat_tour_seen');
+    if (!seen) setShowTourPrompt(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showTour) return undefined;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showTour]);
+
+  useEffect(() => {
+    if (!showTour || !currentTourStep?.targetId) return;
+    const el = document.getElementById(currentTourStep.targetId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [showTour, currentTourStep]);
+
+  useEffect(() => {
+    if (!showTour || !currentTourStep?.targetId) return undefined;
+    const update = () => {
+      const el = document.getElementById(currentTourStep.targetId);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setTourTargetRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+        right: rect.right,
+        bottom: rect.bottom,
+      });
+
+      const padding = 16;
+      const tooltipWidth = 280;
+      const placement = currentTourStep.placement || 'right';
+      let left = placement === 'left' ? rect.left - tooltipWidth - padding : rect.right + padding;
+      left = Math.max(padding, Math.min(left, window.innerWidth - tooltipWidth - padding));
+
+      const top = Math.max(
+        padding,
+        Math.min(rect.top, window.innerHeight - padding - 160)
+      );
+      setTourTooltipPos({ top, left, placement });
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [showTour, currentTourStep]);
 
   // 網站流量統計
   useEffect(() => {
@@ -519,6 +629,26 @@ const LineChatGenerator = () => {
     }
   };
 
+  const finishTour = () => {
+    setShowTour(false);
+    setIsHeaderCollapsed(false);
+    setIsScrolled(false);
+    localStorage.setItem('linechat_tour_seen', '1');
+  };
+
+  const startTour = () => {
+    setShowTourPrompt(false);
+    setTourStepIndex(0);
+    setIsHeaderCollapsed(true);
+    setIsScrolled(false);
+    setShowTour(true);
+  };
+
+  const skipTour = () => {
+    setShowTourPrompt(false);
+    localStorage.setItem('linechat_tour_seen', '1');
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans flex flex-col justify-start items-center">
       
@@ -557,9 +687,10 @@ const LineChatGenerator = () => {
                 <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out ${(isScrolled || isHeaderCollapsed) ? 'max-h-0 opacity-0 mt-0' : 'max-h-96 opacity-100 mt-2'}`}>
                   <div className="text-gray-600 text-sm leading-relaxed text-center md:text-left">
                     <p>
-                      <strong>Line 對話產生器</strong>是一款免費的線上工具，讓你快速建立擬真的 LINE 聊天畫面。
-                      你可以自訂聊天室名稱、日期、時間、對話內容、圖片與已讀狀態，並即時預覽、一鍵截圖下載。
-                      適合用於梗圖製作以及Line貼圖情境展示，無需安裝、開啟即用。
+                      <strong>Line 對話產生器</strong>是一款免費的線上工具，讓你在瀏覽器內快速建立擬真的 LINE 聊天畫面。
+                      你可以自由設定聊天室名稱、日期與時間、對話內容、頭貼、圖片訊息與已讀狀態，並即時在右側手機預覽看到最終效果。
+                      工具支援自動截圖與手動截圖，完成後可一鍵下載單張圖片，或打包下載多張截圖，方便整理與分享。
+                      適合用於梗圖製作、教材與簡報示意、貼文情境展示、產品教學或客服流程說明，無需安裝、開啟即用。
                     </p>
                   </div>
                 </div>
@@ -576,6 +707,23 @@ const LineChatGenerator = () => {
                     </span>
                  </div>
 
+                {!(isHeaderCollapsed || isScrolled) && (
+                  <a
+                    href="https://portaly.cc/xiaohu"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-2 bg-white border border-gray-200 text-gray-700 hover:text-gray-900 hover:border-gray-300 rounded-full font-bold shadow-sm transition-all hover:scale-105 whitespace-nowrap
+                      ${isScrolled
+                        ? 'p-2 w-10 h-10 justify-center md:w-auto md:h-auto md:px-4 md:py-2'
+                        : 'px-6 py-3 text-base'
+                      }
+                    `}
+                    title="關於小胡"
+                  >
+                    <Globe size={20} strokeWidth={2.5} />
+                    <span className={`${isScrolled ? 'hidden md:block' : 'block'}`}>關於小胡</span>
+                  </a>
+                )}
                 <a
                   href="https://portaly.cc/xiaohu/support?utm_source=threads&utm_medium=social&utm_content=link_in_bio"
                   target="_blank"
@@ -590,7 +738,7 @@ const LineChatGenerator = () => {
                 >
                   <Coffee size={(isScrolled || isHeaderCollapsed) ? 20 : 20} strokeWidth={2.5} /> 
                   
-                  {/* ✅ 收合時，手機版隱藏文字，但電腦版(md:)強制顯示文字 */}
+                  {/* 收合時，手機版隱藏文字，但電腦版(md:)強制顯示文字 */}
                   <span className={`${(isScrolled || isHeaderCollapsed) ? 'hidden md:block' : 'block'}`}>贊助小胡一杯咖啡</span>
                 </a>
               </div>
@@ -607,7 +755,10 @@ const LineChatGenerator = () => {
         >
           <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col gap-6 scrollbar-thin scrollbar-thumb-gray-300 transition-all duration-300 ease-in-out flex-1 min-h-0" style={{ overflowY: isMobile ? 'visible' : 'auto' }}>
             {/* Settings Sections */}
-            <section className="space-y-3">
+            <section
+              id="tour-basic"
+              className="space-y-3"
+            >
               <h2 className="font-semibold text-gray-600 flex items-center gap-2"><User size={18} /> 基本設定</h2>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">聊天室名稱</label>
@@ -678,7 +829,10 @@ const LineChatGenerator = () => {
               </div>
 
               <div className="pt-2 border-t border-dashed mt-2">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+                <label
+                  id="tour-auto-shot"
+                  className="flex items-center gap-2 cursor-pointer select-none"
+                >
                   <input type="checkbox" checked={autoScreenshot} onChange={(e) => setAutoScreenshot(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
                   <span className="text-sm text-gray-700 font-medium">啟用「自動截圖」功能</span>
                 </label>
@@ -687,7 +841,10 @@ const LineChatGenerator = () => {
             </section>
             
             {/* User, Message sections ... (kept same) */}
-            <section className="space-y-3 border-t pt-4">
+            <section
+              id="tour-role"
+              className="space-y-3 border-t pt-4"
+            >
               <h2 className="font-semibold text-gray-600">角色 1 (對方) 設定</h2>
               <div className="flex items-center gap-4">
                 <div className="relative w-16 h-16 bg-gray-200 rounded-full overflow-hidden shrink-0 border border-gray-300">
@@ -700,7 +857,10 @@ const LineChatGenerator = () => {
               </div>
             </section>
 
-            <section className="space-y-3 border-t pt-4">
+            <section
+              id="tour-message"
+              className="space-y-3 border-t pt-4"
+            >
               <h2 className="font-semibold text-gray-600">新增訊息</h2>
               <div className="flex bg-gray-100 p-1 rounded-lg">
                 <button onClick={() => setActiveUser(1)} className={`flex-1 py-2 text-sm rounded-md transition-all font-medium ${activeUser === 1 ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>對方 (左)</button>
@@ -754,8 +914,11 @@ const LineChatGenerator = () => {
               </div>
             </section>
 
-            {screenshots.length > 0 && (
-              <section className="space-y-3 border-t pt-4">
+            {(screenshots.length > 0 || (showTour && currentTourStep?.targetId === 'tour-album')) && (
+              <section
+                id="tour-album"
+                className="space-y-3 border-t pt-4"
+              >
                 <h2 className="font-semibold text-gray-600 flex justify-between items-center">
                   <span>暫存截圖 ({screenshots.length})</span>
                   <div className="flex gap-3">
@@ -763,30 +926,45 @@ const LineChatGenerator = () => {
                     <button onClick={() => setScreenshots([])} className="text-xs text-red-500 hover:underline">清空全部</button>
                   </div>
                 </h2>
-                <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto content-start">
-                  {screenshots.map((shot, index) => (
-                    <div key={shot.id} className="relative group border rounded-md overflow-hidden bg-gray-50 cursor-pointer shadow-sm hover:shadow-md transition-all" onClick={() => setPreviewImage(shot.src)}>
-                      <img src={shot.src} alt={`screenshot-${index + 1}`} className="w-full h-auto object-contain" />
-                      <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-tr pointer-events-none">{index + 1}</div>
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); deleteScreenshot(shot.id); }} className="absolute top-1 right-1 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-sm transition-transform hover:scale-110" title="刪除"><Trash2 size={10} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); downloadScreenshot(shot.src, `screenshot-${index + 1}`); }} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-transform hover:scale-110" title={`下載截圖 ${index + 1}`}><Download size={16} /></button>
+                {screenshots.length === 0 ? (
+                  <div className="text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-lg p-3 text-center">
+                    尚無截圖，送出訊息或使用手動截圖後會出現在這裡。
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto content-start">
+                    {screenshots.map((shot, index) => (
+                      <div key={shot.id} className="relative group border rounded-md overflow-hidden bg-gray-50 cursor-pointer shadow-sm hover:shadow-md transition-all" onClick={() => setPreviewImage(shot.src)}>
+                        <img src={shot.src} alt={`screenshot-${index + 1}`} className="w-full h-auto object-contain" />
+                        <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-tr pointer-events-none">{index + 1}</div>
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); deleteScreenshot(shot.id); }} className="absolute top-1 right-1 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-sm transition-transform hover:scale-110" title="刪除"><Trash2 size={10} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); downloadScreenshot(shot.src, `screenshot-${index + 1}`); }} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-transform hover:scale-110" title={`下載截圖 ${index + 1}`}><Download size={16} /></button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
             <div className="mt-auto pt-4 text-xs text-gray-400 text-center">點擊畫面中的對話框可刪除該訊息</div>
           </div>
-          <button onClick={captureScreen} disabled={isCapturing} className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shrink-0">
+          <button
+            id="tour-manual-shot"
+            onClick={captureScreen}
+            disabled={isCapturing}
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shrink-0"
+          >
             {isCapturing ? <><Loader2 className="animate-spin" size={20} /> 截圖處理中...</> : <><Camera size={20} /> 手動截圖</>}
           </button>
         </div>
 
         {/* --- Phone Preview --- */}
         <div className="relative order-2 sticky top-4 shrink-0 flex flex-col gap-4">
-          <div className="w-[375px] rounded-[40px] shadow-2xl overflow-hidden border-[10px] border-gray-800 relative shrink-0 bg-gray-800 transition-all duration-300 ease-in-out" style={{ height: `${getPhoneHeight()}px` }}>
+          <div
+            id="tour-preview"
+            className="w-[375px] rounded-[40px] shadow-2xl overflow-hidden border-[10px] border-gray-800 relative shrink-0 bg-gray-800 transition-all duration-300 ease-in-out"
+            style={{ height: `${getPhoneHeight()}px` }}
+          >
             <div ref={phoneRef} data-screenshot-target="true" className="w-full h-full bg-white relative flex flex-col">
               <div className="absolute inset-0 z-0 bg-[#F2EEE2]"></div>
 
@@ -869,6 +1047,92 @@ const LineChatGenerator = () => {
         <AdSpace label="自適應廣告 2" className="w-full h-32 md:h-48" />
       </div> 
 */}
+
+      {showTour && currentTourStep && tourTargetRect && (
+        <>
+          <div className="fixed inset-0 z-60">
+            <div
+              className="absolute"
+              style={{
+                top: `${tourTargetRect.top}px`,
+                left: `${tourTargetRect.left}px`,
+                width: `${tourTargetRect.width}px`,
+                height: `${tourTargetRect.height}px`,
+                borderRadius: '14px',
+                boxShadow: '0 0 0 4px rgba(34,197,94,0.9), 0 0 0 9999px rgba(0,0,0,0.5)',
+              }}
+            />
+          </div>
+
+          <div
+            className="fixed z-70 w-[280px] bg-white rounded-xl shadow-xl border border-gray-100 p-4"
+            style={{ top: `${tourTooltipPos.top}px`, left: `${tourTooltipPos.left}px` }}
+          >
+            <div className="text-xs text-gray-500 mb-1">
+              步驟 {tourStepIndex + 1} / {tourSteps.length}
+            </div>
+            <h3 className="text-base font-bold text-gray-800 mb-1">{currentTourStep.title}</h3>
+            <p className="text-gray-600 text-sm leading-relaxed">{currentTourStep.desc}</p>
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <button
+                onClick={() => setTourStepIndex((i) => Math.max(0, i - 1))}
+                disabled={tourStepIndex === 0}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 disabled:opacity-50"
+              >
+                上一步
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={finishTour}
+                  className="px-3 py-1.5 text-xs rounded-lg text-gray-500 hover:text-gray-700"
+                >
+                  跳過
+                </button>
+                {tourStepIndex < tourSteps.length - 1 ? (
+                  <button
+                    onClick={() => setTourStepIndex((i) => Math.min(tourSteps.length - 1, i + 1))}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700"
+                  >
+                    下一步
+                  </button>
+                ) : (
+                  <button
+                    onClick={finishTour}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700"
+                  >
+                    完成
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showTourPrompt && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">需要功能介紹嗎？</h3>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              我們可以一步步帶你了解各項功能與操作方式。
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={skipTour}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:text-gray-700"
+              >
+                跳過
+              </button>
+              <button
+                onClick={startTour}
+                className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700"
+              >
+                是
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="w-full max-w-7xl mx-auto mt-12 py-6 border-t border-gray-200 text-center text-gray-500 text-xs px-4">
         <div className="flex flex-wrap justify-center gap-4 mb-2">

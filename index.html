@@ -2,8 +2,13 @@
 <html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon-light.svg" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
+    <!--  <link rel="icon" type="image/svg+xml" href="/favicon.svg" /> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="canonical" href="https://line-chat-generator-by-xiaohu.zeabur.app/" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#22c55e" />
     
     <!-- 主要 SEO 設定 -->
     <title>Line 對話產生器 - 免費線上製作擬真 Line 聊天截圖</title>
@@ -14,6 +19,8 @@
 
     <!-- Open Graph / Facebook (分享時的預覽設定) -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Line 對話產生器" />
+    <meta property="og:locale" content="zh_TW" />
     <meta property="og:url" content="https://line-chat-generator-by-xiaohu.zeabur.app/" /> 
     <meta property="og:title" content="Line 對話產生器 - 免費線上製作擬真 Line 聊天截圖" />
     <meta property="og:description" content="最強大的線上 Line 對話產生器！支援自動截圖、自訂頭貼、圖片訊息與已讀狀態。小編與梗圖創作者必備神器。" />
@@ -34,6 +41,19 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Line對話產生器",
+      "url": "https://line-chat-generator-by-xiaohu.zeabur.app/",
+      "description": "免費線上產生擬真 LINE 聊天畫面並下載截圖的工具。",
+      "publisher": {
+        "@type": "Person",
+        "name": "XiaoHu"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "Line對話產生器",
       "url": "https://line-chat-generator-by-xiaohu.zeabur.app/",
@@ -51,7 +71,11 @@
         "可設定已讀與時間",
         "支援自動長截圖",
         "一鍵打包下載"
-      ]
+      ],
+      "author": {
+        "@type": "Person",
+        "name": "XiaoHu"
+      }
     }
     </script>
   </head>
